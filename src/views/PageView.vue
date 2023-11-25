@@ -112,7 +112,7 @@ export default {
             this.rolesData = this.roles
         })
         this.axios({
-            url: `/api/conversations`,
+            url: `/conversations`,
             method: "GET",
         })
             .then(response => {
@@ -188,7 +188,7 @@ export default {
     methods: {
         confirmRole() {
             this.axios({
-                url: `/api/chat`,
+                url: `/chat`,
                 method: "POST",
                 timeout: 30000,
                 data: JSON.stringify({ prompt: this.prompt }),
@@ -236,7 +236,7 @@ export default {
         changeConversation(item) {
             this.dataSource.find(x => x.isActive).isActive = false;
             this.axios({
-                url: `/api/chat${item.uuid}`,
+                url: `/chat${item.uuid}`,
                 method: "GET",
                 timeout: 10000,
             }).then((response) => {
@@ -258,7 +258,7 @@ export default {
         },
         removeConversation(item) {
             this.axios({
-                url: `/api/delete/${item.id}`,
+                url: `/delete/${item.id}`,
                 method: "GET",
             })
                 .then(response => {
