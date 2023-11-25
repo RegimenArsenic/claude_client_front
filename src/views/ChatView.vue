@@ -37,7 +37,7 @@
             </div>
         </a-drawer>
         <TransitionGroup name="container" tag="div" class="warp" id="warp">
-            <GPTCard v-for="item in dataSource" v-bind="item" :key="item.id" @resend="resendMessage" />
+            <GPTCard v-for="item in dataSource" v-bind="item" v-bind:key="item.id" @resend="resendMessage" />
         </TransitionGroup>
     </main>
     <a-input-group compact style="margin-top: 10px;">
@@ -251,7 +251,6 @@ export default {
                     eventSource.close();
                 });
                 // 处理连接错误
-                eventSource.onerror = handleError
                 const handleError = (error) => {
                     if (eventSource.readyState == EventSource.CLOSED) {
                         answer.message += `\n出现连接错误！Message:${error}\n`
@@ -261,6 +260,7 @@ export default {
                         _this.handleScrollBottom()
                     }
                 }
+                eventSource.onerror = handleError
                 let timerId;
                 // 设置计时器，如果在规定的时间内没有接收到消息，则手动处理
                 function setTimer() {
