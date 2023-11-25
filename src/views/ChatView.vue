@@ -193,7 +193,7 @@ export default {
                     updateAnswer(question, answer)
                 else
                     _this.axios({
-                        url: `/send`,
+                        url: `/api/send`,
                         method: "POST",
                         timeout: 180000,
                         data: JSON.stringify(question),
@@ -229,9 +229,9 @@ export default {
                 _this.handleScrollBottom()
             }
             const updateAnswer = function (question, answer) {
-                const eventSource = new EventSource('/stream');
+                const eventSource = new EventSource('/api/stream');
                 _this.axios({
-                    url: `/stream`,
+                    url: `/api/stream`,
                     method: "POST",
                     timeout: 180000,
                     data: JSON.stringify(question),
