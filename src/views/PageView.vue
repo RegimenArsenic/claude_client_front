@@ -1,15 +1,30 @@
 <template>
     <a-spin tip="加载中..." :spinning="loading">
-        <a-tooltip placement="bottom">
-            <template #title>
-                <span>创建新聊天</span>
+        <a-float-button-group trigger="hover" type="primary" :style="{ right: '20px' }">
+            <template #icon>
+                <PlusCircleOutlined />
             </template>
-            <a-float-button :style="{ top: '15px', left: '15px' }" @click="isModalShow = true">
-                <template #icon>
-                    <PlusCircleOutlined />
+            <a-tooltip placement="left">
+                <template #title>
+                    <span>创建空白新聊天</span>
                 </template>
-            </a-float-button>
-        </a-tooltip>
+                <a-float-button @click="createConversation">
+                    <template #icon>
+                        <PlusCircleOutlined />
+                    </template>
+                </a-float-button>
+            </a-tooltip>
+            <a-tooltip placement="left">
+                <template #title>
+                    <span>使用Prompt创建</span>
+                </template>
+                <a-float-button @click="isModalShow = true">
+                    <template #icon>
+                        <CreditCardOutlined />
+                    </template>
+                </a-float-button>
+            </a-tooltip>
+        </a-float-button-group>
         <div style="width: 96vw">
             <a-row>
                 <a-col :span="4">
@@ -64,18 +79,21 @@
 import ChatView from "./ChatView.vue";
 import { generateUUID, getValue } from "../stores/common.js";
 import { inject, reactive, ref } from "vue";
-import { PlusCircleOutlined, CloseCircleOutlined } from "@ant-design/icons-vue";
+import { PlusCircleOutlined, CloseCircleOutlined, CreditCardOutlined } from "@ant-design/icons-vue";
+import { subMenuProps } from "ant-design-vue/es/menu/src/SubMenu";
 export default {
     components: {
         ChatView,
         PlusCircleOutlined,
         CloseCircleOutlined,
+        CreditCardOutlined
     },
     data() {
         return {
             loading: true,
             dataSource: [],
             roles: [],
+            subMenuShow: false,
             rolesData: [],
             role: '',
             isModalShow: false,
@@ -86,8 +104,8 @@ export default {
             },
             cardStyle(item) {
                 let style = {
-                    width: "292px",
-                    height: "150px",
+                    width: "15vw",
+                    height: "16vh",
                     "margin-top": "10px",
                     background: "var(--color-background-soft)",
                     color: "var(--color-text)",
@@ -118,6 +136,7 @@ export default {
         this.axios({
             url: `/api/conversations`,
             method: "GET",
+            timeout: 10000,
         })
             .then(response => {
                 this.dataSource = response.data;
@@ -133,55 +152,47 @@ export default {
                             chatDataSource: ref([]),
                         });
                     });
-                    this.dataSource = ref(dataSource);
+                    this.dataSource = dataSource;
+                    this.changeConversation(dataSource[0])
+                    dataSource[0].isActive = true
                 } else {
-                    this.dataSource = ref([
-                        {
-                            title: "对话1",
-                            id: generateUUID(),
-                            content: "问题内容",
-                            isActive: true,
-                            chatDataSource: ref([
-                                {
-                                    id: "start",
-                                    type: "message to",
-                                    status: "start",
-                                    message:
-                                        "我是Claude, 一个大型语言AI模型, 我旨在回答并解决人们的任何问题，并且可以使用多种语言与人交流。我无法对事实性与实时性问题提供准确答复，请慎重对待回答。",
-                                    isFinish: true,
-                                    recordTime: new Date().toLocaleString(),
-                                },
-                            ]),
-                        },
-                    ]);
+                    this.dataSource = [this.newConversation()];
                 }
                 this.loading = false
             })
             .catch(error => {
-                this.dataSource = ref([
-                    {
-                        title: "对话1",
-                        id: generateUUID(),
-                        content: "问题内容",
-                        isActive: true,
-                        chatDataSource: ref([
-                            {
-                                id: "start",
-                                type: "message to",
-                                status: "start",
-                                message:
-                                    "我是Claude, 一个大型语言AI模型, 我旨在回答并解决人们的任何问题，并且可以使用多种语言与人交流。我无法对事实性与实时性问题提供准确答复，请慎重对待回答。",
-                                isFinish: true,
-                                recordTime: new Date().toLocaleString(),
-                            },
-                        ]),
-                    },
-                ]);
+                this.dataSource = [this.newConversation()];
                 this.loading = false
             })
     },
     watch: {},
     methods: {
+        createConversation() {
+            let currentConv = this.dataSource.find(x => x.isActive);
+            currentConv.isActive = false
+            let conversation = this.newConversation();
+            this.dataSource.push(conversation);
+        },
+        newConversation() {
+            return {
+                title: "新对话",
+                id: generateUUID(),
+                content: "问题内容",
+                isActive: true,
+                chatDataSource: ref([
+                    {
+                        id: "start",
+                        type: "message to",
+                        status: "start",
+                        message:
+                            "我是Claude, 一个大型语言AI模型, 我旨在回答并解决人们的任何问题，并且可以使用多种语言与人交流。我无法对事实性与实时性问题提供准确答复，请慎重对待回答。",
+                        isFinish: true,
+                        recordTime: new Date().toLocaleString(),
+                        isActive: true
+                    },
+                ]),
+            }
+        },
         confirmRole() {
             this.loading = true
             this.axios({
@@ -193,6 +204,7 @@ export default {
                 let answer = reactive({
                     title: this.role,
                     id: response.data.conversation_id,
+                    isActive: true,
                     content: "问题内容",
                     chatDataSource: ref([
                         {
@@ -213,9 +225,11 @@ export default {
                     ]),
                 });
                 this.dataSource.push(answer);
+                this.isModalShow = false
                 this.loading = false
             }).catch(error => {
                 this.$message.error(`创建对话失败！${error}`)
+                this.isModalShow = false
                 this.loading = false
             });
         },

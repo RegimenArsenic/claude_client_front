@@ -36,21 +36,32 @@
                 <a-input type="color" v-model:value="config.backgroundColor" />
             </div>
         </a-drawer>
-        <TransitionGroup name="container" tag="div" class="warp" id="warp">
-            <GPTCard v-for="item in dataSource" v-bind="item" v-bind:key="item.id" @resend="resendMessage" />
+        <TransitionGroup name="container" tag="div" class="warp" id="warp" ref="warp" v-on:scroll="handleScroll">
+            <GPTCard v-for="item in dataSource" v-bind="item" v-bind:key="item.id" @resend="resendMessage"
+                @showFile="showFileContent" />
         </TransitionGroup>
     </main>
-    <a-input-group compact style="margin-top: 10px;">
+    <a-input-group compact style="margin-top: 30px;">
         <a-textarea class="input-textarea" v-model:value="currentMessage" placeholder="请输入" :rows="4" :allowClear="true"
             :autoSize="{ minRows: 4, maxRows: 4 }" style="overflow: hidden;" @keypress="handleKeyPress" />
         <a-button type="primary" style="height: 98px;" @click="sendMessage">Ctrl + Enter</a-button>
     </a-input-group>
+
+    <a-modal v-model:visible="showFile" width="80vw" :title="file?.file_name" :footer="null" style="top:20px">
+        <div class="custom-modal-content">
+            <span>
+                {{ file?.extracted_content }}
+            </span>
+        </div>
+    </a-modal>
 </template>
 <script>
+import { fetchEventSource } from '@microsoft/fetch-event-source'
 import GPTCard from '../components/GPTCard.vue'
 import {
     generateUUID
 } from '../stores/common.js'
+import store from '../stores/store';
 import {
     SettingFilled,
     DashOutlined,
@@ -75,6 +86,9 @@ export default {
     },
     data() {
         return {
+            file: null,
+            showFile: false,
+            autoScroll: ref(true),
             dataSource: ref(this.chatDataSource),
             replyMethodOptios: ref([{
                 value: 'all',
@@ -160,6 +174,13 @@ export default {
         },
     },
     methods: {
+        showFileContent(file) {
+            this.showFile = true
+            this.file = file
+        },
+        handleScroll() {
+            this.autoScroll = this.$refs.warp.$el.scrollHeight - this.$refs.warp.$el.offsetHeight - this.$refs.warp.$el.scrollTop < 25;
+        },
         setBackgroundColor(backgroundColor) {
             const oppositeColor = (a, ilighten, transparent = 'FF') => {
                 a = a.replace('#', '');
@@ -191,14 +212,19 @@ export default {
             const requestApi = (question, answer) => {
                 if (_this.config.replyMethod == 'immediate')
                     updateAnswer(question, answer)
-                else
+                else {
+                    let flag = this.dataSource.find(x => x.sender && x.sender !== 'assistant')
+                    let url = flag ? `/api/send` : `/api/chat`
                     _this.axios({
-                        url: `/api/send`,
+                        url,
                         method: "POST",
                         timeout: 180000,
                         data: JSON.stringify(question),
                     }).then((response) => {
-                        answer.message = response.data.result
+                        if (!flag) {
+                            this.chatId = response.data.conversation_id
+                        }
+                        answer.message = response.data.response
                         answerFinished(answer)
                     }).catch((error) => {
                         answer.message = "网络故障，对话未送达"
@@ -206,6 +232,7 @@ export default {
                         answerFinished(answer)
                         answer.status = 'error'
                     })
+                }
             }
             const newMessage = (currentItem) => {
                 let answer = reactive({
@@ -229,46 +256,61 @@ export default {
                 _this.handleScrollBottom()
             }
             const updateAnswer = function (question, answer) {
-                const eventSource = new EventSource('/api/stream');
-                _this.axios({
-                    url: `/api/stream`,
-                    method: "POST",
-                    timeout: 180000,
-                    data: JSON.stringify(question),
-                }).catch(e => {
-                    handleError(e)
-                })
-                // 处理服务器发送的消息
-                eventSource.addEventListener('update', event => {
-                    resetTimer();
-                    answer.message += event.data
-                    _this.handleScrollBottom()
-                });
-                // 处理服务器发送的结束消息
-                eventSource.addEventListener('finish', event => {
-                    answerFinished(answer)
-                    _this.handleScrollBottom()
-                    eventSource.close();
+                let flag = _this.dataSource.find(x => x.sender && x.sender !== 'assistant')
+                const eventSource = new fetchEventSource(`/api/stream${flag ? '' : '/chat'}`, {
+                    openWhenHidden: true,
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        "Authorization": "Bearer " + store.state.user.token
+                    },
+                    body: JSON.stringify(question),
+                    onopen(response) {
+                        if (response.ok) {
+                            answer.message = ""
+                            return;
+                        } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                            // client-side errors are usually non-retriable:
+                            handleError(response.status)
+                        } else {
+                            throw new Error("Unknow error,trying to interrupt EventSource retry.")
+                        }
+                    },
+                    onmessage(msg) {
+                        if (msg.event === 'update') {
+                            resetTimer();
+                            answer.message += msg.data
+                            _this.handleScrollBottom()
+                        } else if (msg.event === 'finish') {
+                            if (!this.flag) {
+                                _this.chatId = msg.data
+                            }
+                            answerFinished(answer)
+                            _this.handleScrollBottom()
+                        }
+                    },
+                    onerror(e) {
+                        handleError(e)
+                        throw e
+                    },
+                    onclose() {
+                        console.log("onClose!")
+                    }
                 });
                 // 处理连接错误
                 const handleError = (error) => {
-                    if (eventSource.readyState == EventSource.CLOSED) {
-                        answer.message += `\n出现连接错误！Message:${error}\n`
-                        answerFinished(answer)
-                        answer.status = 'error'
-                        eventSource.close();
-                        _this.handleScrollBottom()
-                    }
+                    answer.message += `\n出现连接错误！Message:${error}\n`
+                    answerFinished(answer)
+                    answer.status = 'error'
+                    _this.handleScrollBottom()
                 }
                 eventSource.onerror = handleError
                 let timerId;
                 // 设置计时器，如果在规定的时间内没有接收到消息，则手动处理
                 function setTimer() {
                     timerId = setTimeout(() => {
-                        if (eventSource.readyState != EventSource.CLOSED) {
-                            handleError("连接无响应！")
-                            handle_disconnect();
-                        }
+                        handleError("连接无响应！")
+                        handle_disconnect();
                     }, 120000);
                 }
 
@@ -300,11 +342,12 @@ export default {
             newMessage(item)
         },
         handleScrollBottom() {
-            var element = document.getElementById('warp');
-            element.scrollTo({
-                top: element.scrollHeight,
-                behavior: 'smooth'
-            });
+            if (this.autoScroll) {
+                this.$refs.warp.$el.scrollTo({
+                    top: this.$refs.warp.$el.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
         },
         resendMessage(id) {
             let faildItemIndex = this.dataSource.findIndex(x => x.id == id)
@@ -403,5 +446,11 @@ span.input-textarea {
 
 .container-leave-active {
     position: absolute;
+}
+
+.custom-modal-content {
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 8px;
 }
 </style>
