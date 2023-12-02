@@ -17,10 +17,22 @@ message.config({
     prefixCls: "global-message",
 });
 let instance = axios.create({
-    timeout: 1000,
     withCredentials: true,
     headers: { "Content-Type": "application/json; charset=utf-8" },
 });
+// 设置响应拦截器
+instance.interceptors.response.use(
+    (response) => {
+        return response;
+    },
+    (error) => {
+        if (error.response.status === 401) {
+            // 处理401错误，跳转到登录页
+            router.push('/login');
+        }
+        return Promise.reject(error);
+    }
+);
 // 路由前置守卫
 router.beforeEach((to, from, next) => {
     // 需要验证且用户未登录，跳转到登录页

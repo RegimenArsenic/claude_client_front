@@ -42,36 +42,42 @@
                                         style="color: var(--color-text)" />
                                 </a-tooltip>
                             </template>
-                            <p>{{ item.content }}</p>
+                            <p style="margin-top: -10px;">{{ item.content }}</p>
                         </a-card>
                     </TransitionGroup>
                 </a-col>
                 <a-col :span="19" style="margin-left: 2vw">
-                    <ChatView :chatDataSource="currentChatView" :chatId="currentChatId" @update="updateChatDataSource" />
+                    <ChatView ref="chatView" :chatDataSource="currentChatView" :chatId="currentChatId"
+                        @update="updateChatDataSource" />
                 </a-col>
             </a-row>
         </div>
-        <a-modal v-model:open="isModalShow" :bodyStyle="modalStyle" title="选择Prompt" @ok="confirmRole" width="80vw">
-            <div :style="modalStyle">
-                <a-row>
-                    <a-col :span="5">
-                        <TransitionGroup name="container" tag="div" class="cardWarp promptCard">
-                            <a-card v-for="item in rolesData" :title="item.act" v-bind:key="item.act"
-                                @click="changeRole(item)" class="card"
-                                :headStyle="{ color: 'var(--color-text)', 'border-color': 'var(--color-border-soft)' }"
-                                :style="cardStyle(item)">
-                                <p>{{ item.prompt.length > 42 ? item.prompt.slice(0, 42) + "..." : item.prompt }}</p>
-                            </a-card>
-                        </TransitionGroup>
-                    </a-col>
-                    <a-col :span="18" style="margin-left: 20px;">
-                        <a-input-search v-model:value="role" enter-button @search="onSearchRole" placeholder="角色名称" />
-                        <a-textarea class="input-textarea" v-model:value="prompt" placeholder="角色Prompt" :rows="23"
-                            :allowClear="true" :autoSize="{ minRows: 23, maxRows: 23 }"
-                            style="overflow: hidden;margin-top: 15px;" />
-                    </a-col>
-                </a-row>
-            </div>
+
+        <a-modal v-model:open="isModalShow" :bodyStyle="modalStyle" title="选择Prompt" @ok="confirmRole" width="80vw"
+            :confirmLoading="promptLoading" @cancel="() => { promptLoading = false; isModalShow = false; }">
+            <a-spin tip="加载中..." :spinning="promptLoading">
+                <div :style="modalStyle">
+                    <a-row>
+                        <a-col :span="5">
+                            <TransitionGroup name="container" tag="div" class="cardWarp promptCard">
+                                <a-card v-for="item in rolesData" :title="item.act" v-bind:key="item.act"
+                                    @click="changeRole(item)" class="card"
+                                    :headStyle="{ color: 'var(--color-text)', 'border-color': 'var(--color-border-soft)' }"
+                                    :style="cardStyle(item)">
+                                    <p>{{ item.prompt.length > 42 ? item.prompt.slice(0, 42) + "..." : item.prompt }}</p>
+                                </a-card>
+                            </TransitionGroup>
+                        </a-col>
+                        <a-col :span="18" style="margin-left: 20px;">
+                            <a-input-search v-model:value="role" enter-button @search="onSearchRole" placeholder="角色名称"
+                                @change="handleSearchChange" />
+                            <a-textarea class="input-textarea" v-model:value="prompt" placeholder="角色Prompt" :rows="23"
+                                :allowClear="true" :autoSize="{ minRows: 23, maxRows: 23 }"
+                                style="overflow: hidden;margin-top: 15px;" />
+                        </a-col>
+                    </a-row>
+                </div>
+            </a-spin>
         </a-modal>
     </a-spin>
 </template>
@@ -80,7 +86,9 @@ import ChatView from "./ChatView.vue";
 import { generateUUID, getValue } from "../stores/common.js";
 import { inject, reactive, ref } from "vue";
 import { PlusCircleOutlined, CloseCircleOutlined, CreditCardOutlined } from "@ant-design/icons-vue";
+import { message } from 'ant-design-vue';
 import { subMenuProps } from "ant-design-vue/es/menu/src/SubMenu";
+import debounce from 'lodash.debounce'
 export default {
     components: {
         ChatView,
@@ -91,11 +99,13 @@ export default {
     data() {
         return {
             loading: true,
+            promptLoading: false,
             dataSource: [],
             roles: [],
             subMenuShow: false,
             rolesData: [],
             role: '',
+            handleSearchChange: debounce(this.onSearchRole, 500),
             isModalShow: false,
             prompt: '',
             axios: inject("$axios"),
@@ -137,46 +147,70 @@ export default {
             url: `/api/conversations`,
             method: "GET",
             timeout: 10000,
-        })
-            .then(response => {
-                this.dataSource = response.data;
-                if (response.data?.length) {
-                    let conversation = response.data;
-                    let dataSource = [];
-                    conversation.forEach((x, index) => {
-                        dataSource.push({
-                            title: `对话${index + 1}`,
-                            id: x.uuid,
-                            content: x.name ?? "对话内容",
-                            isActive: false,
-                            chatDataSource: ref([]),
-                        });
+        }).then(response => {
+            this.dataSource = response.data;
+            if (response.data?.length) {
+                let conversation = response.data;
+                let dataSource = [];
+                conversation.forEach((x, index) => {
+                    dataSource.push({
+                        title: `对话${index + 1}`,
+                        id: x.uuid,
+                        content: x.name ?? "对话内容",
+                        isActive: false,
+                        chatDataSource: ref([]),
                     });
-                    this.dataSource = dataSource;
-                    this.changeConversation(dataSource[0])
-                    dataSource[0].isActive = true
-                } else {
-                    this.dataSource = [this.newConversation()];
-                }
-                this.loading = false
-            })
+                });
+                this.dataSource = dataSource;
+                this.changeConversation(dataSource[0])
+                dataSource[0].isActive = true
+            } else {
+                createConversation();
+            }
+            this.loading = false
+        })
             .catch(error => {
-                this.dataSource = [this.newConversation()];
                 this.loading = false
             })
     },
     watch: {},
     methods: {
-        createConversation() {
-            let currentConv = this.dataSource.find(x => x.isActive);
-            currentConv.isActive = false
-            let conversation = this.newConversation();
-            this.dataSource.push(conversation);
+        async tryCrateNewConversation() {
+            let conversation = null
+            await this.axios({
+                url: `/api/new`,
+                method: "GET",
+                timeout: 10000,
+            }).then(response => {
+                let data = response.data;
+                if (data?.conversation_id) {
+                    conversation = this.newConversation(data?.conversation_id)
+                }
+            })
+            return conversation
         },
-        newConversation() {
+        async createConversation() {
+            this.loading = true
+            let currentConv = this.dataSource.find(x => x.isActive);
+            if (currentConv)
+                currentConv.isActive = false
+            let conversation = await this.tryCrateNewConversation();
+            if (conversation) {
+                this.dataSource.unshift(conversation);
+            }
+            else {
+                message.error({
+                    title: '错误',
+                    content: '连接服务器错误！',
+                })
+            }
+            this.loading = false
+            return conversation
+        },
+        newConversation(id = generateUUID()) {
             return {
                 title: "新对话",
-                id: generateUUID(),
+                id,
                 content: "问题内容",
                 isActive: true,
                 chatDataSource: ref([
@@ -193,48 +227,19 @@ export default {
                 ]),
             }
         },
-        confirmRole() {
-            this.loading = true
-            this.axios({
-                url: `/api/chat`,
-                method: "POST",
-                timeout: 30000,
-                data: JSON.stringify({ prompt: this.prompt }),
-            }).then((response) => {
-                let answer = reactive({
-                    title: this.role,
-                    id: response.data.conversation_id,
-                    isActive: true,
-                    content: "问题内容",
-                    chatDataSource: ref([
-                        {
-                            id: "start",
-                            type: "message from",
-                            status: "start",
-                            message: this.prompt,
-                            isFinish: true,
-                            recordTime: new Date().toLocaleString(),
-                        }, {
-                            id: generateUUID(),
-                            type: "message to",
-                            status: "finish",
-                            message: response.data.response,
-                            isFinish: true,
-                            recordTime: new Date().toLocaleString(),
-                        },
-                    ]),
-                });
-                this.dataSource.push(answer);
-                this.isModalShow = false
-                this.loading = false
-            }).catch(error => {
-                this.$message.error(`创建对话失败！${error}`)
-                this.isModalShow = false
-                this.loading = false
-            });
+        async confirmRole() {
+            this.promptLoading = true
+            let conversation = await this.createConversation()
+            if (conversation) {
+                this.$refs.chatView.setCurrentMessage(this.prompt)
+            } else {
+                this.$message.error(`创建对话失败！`)
+            }
+            this.isModalShow = false
+            this.promptLoading = false
         },
-        onSearchRole(data, event) {
-            let dataReg = new RegExp(data, "i");
+        onSearchRole() {
+            let dataReg = new RegExp(this.role, "i");
             this.rolesData = this.roles.filter(role => role.act.search(dataReg) != -1)
         },
         updateChatDataSource(newValue) {
@@ -287,28 +292,27 @@ export default {
                 url: `/api/delete/${item.id}`,
                 method: "GET",
                 timeout: 10000,
-            })
-                .then(response => {
-                    if (response.data.result) {
-                        var index = this.dataSource.findIndex(x => x == item);
-                        if (index > -1) {
-                            this.dataSource.splice(index, 1);
-                            if (item.isActive) {
-                                let currentIndex = Math.min(this.dataSource.length, index);
-                                if (currentIndex > 0) {
-                                    this.dataSource[currentIndex - 1].isActive = true;
-                                }
+            }).then(response => {
+                if (response.data.result) {
+                    var index = this.dataSource.findIndex(x => x == item);
+                    if (index > -1) {
+                        this.dataSource.splice(index, 1);
+                        if (item.isActive) {
+                            let currentIndex = Math.min(this.dataSource.length, index);
+                            if (currentIndex > 0) {
+                                this.dataSource[currentIndex - 1].isActive = true;
+                                this.changeConversation(this.dataSource[currentIndex - 1])
                             }
                         }
-                    } else {
-                        this.$message.error("删除失败！");
                     }
-                    this.loading = false
-                })
-                .catch(error => {
-                    this.$message.error(`删除失败！${error}`)
-                    this.loading = false
-                });
+                } else {
+                    this.$message.error("删除失败！");
+                }
+                this.loading = false
+            }).catch(error => {
+                this.$message.error(`删除失败！${error}`)
+                this.loading = false
+            });
         },
     },
 };

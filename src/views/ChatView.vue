@@ -57,7 +57,7 @@
 </template>
 <script>
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import GPTCard from '../components/GPTCard.vue'
+import GPTCard from '../components/gptcard.vue'
 import {
     generateUUID
 } from '../stores/common.js'
@@ -170,7 +170,7 @@ export default {
                     this.dataSource.splice(index, 1)
                 }
             }
-            this.handleScrollBottom()
+            this.handleScrollBottom(true)
         },
     },
     methods: {
@@ -179,7 +179,7 @@ export default {
             this.file = file
         },
         handleScroll() {
-            this.autoScroll = this.$refs.warp.$el.scrollHeight - this.$refs.warp.$el.offsetHeight - this.$refs.warp.$el.scrollTop < 25;
+            this.autoScroll = this.$refs.warp.$el.scrollHeight - this.$refs.warp.$el.offsetHeight - this.$refs.warp.$el.scrollTop < 35;
         },
         setBackgroundColor(backgroundColor) {
             const oppositeColor = (a, ilighten, transparent = 'FF') => {
@@ -207,23 +207,35 @@ export default {
                 this.sendMessage()
             }
         },
+        setCurrentMessage(msg) {
+            if (msg) {
+                let currentItem = this.dataSource.find(x => x.status == 'current')
+                if (currentItem) {
+                    currentItem.message = curVal
+                } else {
+                    this.dataSource.push({
+                        id: generateUUID(),
+                        status: 'current',
+                        type: "message from",
+                        message: msg,
+                        isFinish: true
+                    })
+                }
+                this.sendMessage(null, null)
+            }
+        },
         sendMessage(event, resend) {
             let _this = this
             const requestApi = (question, answer) => {
                 if (_this.config.replyMethod == 'immediate')
                     updateAnswer(question, answer)
                 else {
-                    let flag = this.dataSource.find(x => x.sender && x.sender !== 'assistant')
-                    let url = flag ? `/api/send` : `/api/chat`
                     _this.axios({
-                        url,
+                        url: `/api/send`,
                         method: "POST",
                         timeout: 180000,
                         data: JSON.stringify(question),
                     }).then((response) => {
-                        if (!flag) {
-                            this.chatId = response.data.conversation_id
-                        }
                         answer.message = response.data.response
                         answerFinished(answer)
                     }).catch((error) => {
@@ -256,8 +268,7 @@ export default {
                 _this.handleScrollBottom()
             }
             const updateAnswer = function (question, answer) {
-                let flag = _this.dataSource.find(x => x.sender && x.sender !== 'assistant')
-                const eventSource = new fetchEventSource(`/api/stream${flag ? '' : '/chat'}`, {
+                const eventSource = new fetchEventSource(`/api/stream`, {
                     openWhenHidden: true,
                     method: 'POST',
                     headers: {
@@ -279,12 +290,10 @@ export default {
                     onmessage(msg) {
                         if (msg.event === 'update') {
                             resetTimer();
-                            answer.message += msg.data
+                            answer.message += decodeURIComponent(msg.data)
                             _this.handleScrollBottom()
                         } else if (msg.event === 'finish') {
-                            if (!this.flag) {
-                                _this.chatId = msg.data
-                            }
+                            answer.message = decodeURIComponent(msg.data)
                             answerFinished(answer)
                             _this.handleScrollBottom()
                         }
@@ -340,9 +349,10 @@ export default {
             }
             let item = finishCurrentMessage()
             newMessage(item)
+            this.handleScrollBottom()
         },
-        handleScrollBottom() {
-            if (this.autoScroll) {
+        handleScrollBottom(force = false) {
+            if (force || this.autoScroll) {
                 this.$refs.warp.$el.scrollTo({
                     top: this.$refs.warp.$el.scrollHeight,
                     behavior: 'smooth'

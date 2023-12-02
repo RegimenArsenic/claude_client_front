@@ -6,34 +6,34 @@ const store = createStore({
         user: null // 用户信息
     },
     mutations: {
-        setUser (state, user) {
+        setUser(state, user) {
             localStorage.setItem('frontUserInfo', JSON.stringify(user))
             state.user = user;
         }
     },
     actions: {
-        async login ({ commit }, user) {
+        async login({ commit }, user) {
             // 在这里进行登录验证，验证通过后将用户信息保存到 state 中
             user.password = md5(user.password)
-            let resut;
+            let result;
             await axios({
                 url: `/api/login`,
                 method: "POST",
                 timeout: 100000,
                 data: user,
             }).then((response) => {
-                resut = response.data
+                result = response.data
                 commit('setUser', response.data);
             }).catch((error) => {
-                resut = error.response
+                result = error.response
                 console.log(error)
             })
-            return resut
+            return result
         },
-        setLocalUser ({ commit },user) { 
+        setLocalUser({ commit }, user) {
             commit('setUser', user);
         },
-        logout ({ commit }) {
+        logout({ commit }) {
             // 在这里执行登出操作，清除用户信息
             commit('setUser', null);
         }
