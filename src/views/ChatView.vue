@@ -57,7 +57,7 @@
 </template>
 <script>
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import GPTCard from '../components/gptcard.vue'
+import GPTCard from '../components/GPTCard.vue'
 import {
     generateUUID
 } from '../stores/common.js'
