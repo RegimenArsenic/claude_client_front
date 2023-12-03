@@ -187,17 +187,15 @@ export default {
             this.$emit('resend', this.id)
         },
         update() {
-            setTimeout(() => {
-                document.querySelectorAll('pre').forEach(el => {
-                    if (el.classList.contains('code-copy-added')) return
-                    const app = createApp(CodeCopy, {
-                        code: el.innerText,
-                        originHtml: el.innerHTML
-                    })
-                    app.mount(el);
-                    el.classList.add('code-copy-added')
+            document.querySelectorAll('pre').forEach(el => {
+                if (el.classList.contains('code-copy-added')) return
+                const app = createApp(CodeCopy, {
+                    code: el.innerText,
+                    originHtml: el.innerHTML
                 })
-            }, 100)
+                app.mount(el);
+                el.classList.add('code-copy-added')
+            })
         }
     }
 }

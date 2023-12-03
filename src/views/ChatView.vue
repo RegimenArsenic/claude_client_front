@@ -226,6 +226,7 @@ export default {
         },
         sendMessage(event, resend) {
             let _this = this
+            let timerId;
             const requestApi = (question, answer) => {
                 if (_this.config.replyMethod == 'immediate')
                     updateAnswer(question, answer)
@@ -300,9 +301,11 @@ export default {
                     },
                     onerror(e) {
                         handleError(e)
+                        console.log(e)
                         throw e
                     },
                     onclose() {
+                        clearTimeout(timerId);
                         console.log("onClose!")
                     }
                 });
@@ -313,8 +316,6 @@ export default {
                     answer.status = 'error'
                     _this.handleScrollBottom()
                 }
-                eventSource.onerror = handleError
-                let timerId;
                 // 设置计时器，如果在规定的时间内没有接收到消息，则手动处理
                 function setTimer() {
                     timerId = setTimeout(() => {
@@ -349,7 +350,7 @@ export default {
             }
             let item = finishCurrentMessage()
             newMessage(item)
-            this.handleScrollBottom()
+            this.handleScrollBottom(true)
         },
         handleScrollBottom(force = false) {
             if (force || this.autoScroll) {
